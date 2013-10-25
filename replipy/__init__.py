@@ -14,4 +14,6 @@ app = Flask(__name__)
 app.register_blueprint(replipy)
 
 if __name__ == '__main__':
+    from replipy.storage import MemoryDatabase
+    replipy.db_cls = MemoryDatabase
     app.run(debug=True)
