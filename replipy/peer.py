@@ -52,3 +52,58 @@ def database(dbname):
         return replipy.make_response(412, {'error': 'db_exists'})
 
     return locals()[flask.request.method.lower()]()
+
+
+@replipy.route('/<dbname>/<docid>',
+               methods=['HEAD', 'GET', 'PUT', 'DELETE'])
+def document(dbname, docid):
+    def head():
+        return get()
+
+    def get():
+        if docid not in db:
+            return replipy.make_response(404, {'error': 'not_found',
+                                               'reason': docid})
+        return replipy.make_response(200, db.load(docid))
+
+    def put():
+        doc = flask.request.get_json()
+        doc['_id'] = docid
+        try:
+            idx, rev = db.store(doc, flask.request.args.get('rev'))
+        except replipy.db_cls.Conflict:
+            return replipy.make_response(409, {
+                'error': 'conflict'
+            })
+        else:
+            return replipy.make_response(201, {
+                'ok': True,
+                'id': idx,
+                'rev': rev
+            })
+
+    def delete():
+        idx, rev = db.remove(docid)
+        return replipy.make_response(201, {
+            'ok': True,
+            'id': idx,
+            'rev': rev
+        })
+
+    if dbname not in replipy.dbs:
+        return replipy.make_response(404, {'error': 'not_found',
+                                           'reason': dbname})
+    db = replipy.dbs[dbname]
+    return locals()[flask.request.method.lower()]()
+
+
+@replipy.route('/<dbname>/_design/<docid>',
+               methods=['HEAD', 'GET', 'PUT', 'DELETE'])
+def design_document(dbname, docid):
+    return document(dbname, '_design/' + docid)
+
+
+@replipy.route('/<dbname>/_local/<docid>',
+               methods=['GET', 'PUT', 'DELETE'])
+def local_document(dbname, docid):
+    return document(dbname, '_local/' + docid)

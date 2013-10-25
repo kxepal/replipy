@@ -10,7 +10,7 @@
 """Test suite for case when Replipy acts as Target for replication process"""
 
 import unittest
-from replipy.tests import ReplipyTestCase
+from replipy.tests import ReplipyTestCase, ReplipyDBTestCase
 
 
 class VerifyPeersTestCase(ReplipyTestCase):
@@ -58,6 +58,72 @@ class GetPeersInfoTestCase(ReplipyTestCase):
         assert resp['instance_start_time'].isdigit()
         assert len(resp['instance_start_time']) == 16
         assert resp['update_seq'] == 0
+
+
+class DocumentAPITestCase(ReplipyDBTestCase):
+
+    docid = 'abc'
+
+    def test_get_missed_doc(self):
+        rv = self.app.get('/%s/%s' % (self.dbname, self.docid),
+                          content_type='application/json')
+        assert rv.status_code == 404
+
+        resp = self.decode(rv)
+        assert resp['error'] == 'not_found'
+
+    def test_create_doc(self):
+        rv = self.app.put('/%s/%s' % (self.dbname, self.docid),
+                          data=self.encode({'foo': 'bar'}),
+                          content_type='application/json')
+        assert rv.status_code == 201
+
+        resp = self.decode(rv)
+        assert resp['ok']
+        assert resp['id'] == self.docid
+
+    def test_get_doc(self):
+        rv = self.app.put('/%s/%s' % (self.dbname, self.docid),
+                          data=self.encode({'foo': 'bar'}),
+                          content_type='application/json')
+        assert rv.status_code == 201
+
+        rv = self.app.get('/%s/%s' % (self.dbname, self.docid),
+                          content_type='application/json')
+        assert rv.status_code == 200
+
+        resp = self.decode(rv)
+        assert resp['_id'] == self.docid
+        assert resp['foo'] == 'bar'
+
+    def test_conflict(self):
+        rv = self.app.put('/%s/%s' % (self.dbname, self.docid),
+                          data=self.encode({'foo': 'bar'}),
+                          content_type='application/json')
+        assert rv.status_code == 201
+
+        resp = self.decode(rv)
+        rev = resp['rev']
+
+        rv = self.app.put('/%s/%s' % (self.dbname, self.docid),
+                          data=self.encode({'foo': 'bar'}),
+                          content_type='application/json')
+        assert rv.status_code == 409
+
+        rv = self.app.put('/%s/%s' % (self.dbname, self.docid),
+                          data=self.encode({'foo': 'bar', '_rev': rev}),
+                          content_type='application/json')
+        assert rv.status_code == 201, rv.data
+
+
+class DesignDocsTestCase(DocumentAPITestCase):
+
+    docid = '_design/abc'
+
+
+class ReplicationLogTestCase(DocumentAPITestCase):
+
+    docid = '_local/abc'
 
 
 if __name__ == '__main__':
