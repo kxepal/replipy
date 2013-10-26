@@ -9,6 +9,7 @@
 
 import json
 import flask
+import werkzeug.http
 from .storage import ABCDatabase
 
 
@@ -67,13 +68,47 @@ def document(dbname, docid):
         return replipy.make_response(200, db.load(docid))
 
     def put():
-        doc = flask.request.get_json()
+        rev = flask.request.args.get('rev')
+        new_edits = json.loads(flask.request.args.get('new_edits', 'true'))
+
+        if flask.request.content_type == 'application/json':
+            doc = flask.request.get_json()
+
+        elif flask.request.content_type.startswith('multipart/related'):
+            parts = parse_multipart_data(
+                flask.request.stream, flask.request.mimetype_params['boundary'])
+
+            # CouchDB has an agreement, that document goes before attachments
+            # which simplifies processing logic and reduces footprint
+            headers, body = next(parts)
+            assert headers['Content-Type'] == 'application/json'
+            doc = json.loads(body.decode())
+            # We have to inject revision into doc there to correct compute
+            # revpos field for attachments
+            doc.setdefault('_rev', rev)
+
+            for headers, body in parts:
+                params = werkzeug.http.parse_options_header(
+                    headers['Content-Disposition'])[1]
+                fname = params['filename']
+                ctype = headers['Content-Type']
+                db.add_attachment(doc, fname, body, ctype)
+
+        else:
+            # mimics to CouchDB response in case of unsupported mime-type
+            return replipy.make_response(400, {
+                'error': 'bad_request',
+                'reason': 'invalid_json'
+            })
+
         doc['_id'] = docid
+
         try:
-            idx, rev = db.store(doc, flask.request.args.get('rev'))
-        except replipy.db_cls.Conflict:
+            idx, rev = db.store(doc, rev, new_edits)
+        except replipy.db_cls.Conflict as err:
             return replipy.make_response(409, {
-                'error': 'conflict'
+                'error': 'conflict',
+                'reason': str(err)
             })
         else:
             return replipy.make_response(201, {
@@ -134,3 +169,44 @@ def database_ensure_full_commit(dbname):
                                            'reason': dbname})
     db = replipy.dbs[dbname]
     return replipy.make_response(201, db.ensure_full_commit())
+
+
+def parse_multipart_data(stream, boundary):
+    boundary = boundary.encode()
+    next_boundary = boundary and b'--' + boundary or None
+    last_boundary = boundary and b'--' + boundary + b'--' or None
+
+    stack = []
+
+    state = 'boundary'
+    line = next(stream).rstrip()
+    assert line == next_boundary
+    for line in stream:
+        if line.rstrip() == last_boundary:
+            break
+
+        if state == 'boundary':
+            state = 'headers'
+            if stack:
+                headers, body = stack.pop()
+                yield headers, b''.join(body)
+            stack.append(({}, []))
+
+        if state == 'headers':
+            if line == b'\r\n':
+                state = 'body'
+                continue
+            headers = stack[-1][0]
+            line = line.decode()
+            key, value = map(lambda i: i.strip(), line.split(':'))
+            headers[key] = value
+
+        if state == 'body':
+            if line.rstrip() == next_boundary:
+                state = 'boundary'
+                continue
+            stack[-1][1].append(line)
+
+    if stack:
+        headers, body = stack.pop()
+        yield headers, b''.join(body)

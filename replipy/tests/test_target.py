@@ -115,6 +115,23 @@ class DocumentAPITestCase(ReplipyDBTestCase):
                           content_type='application/json')
         assert rv.status_code == 201, rv.data
 
+    def test_multipart_related(self):
+        data = (b'--abc\r\n'
+                b'Content-Type: application/json\r\n\r\n'
+                b'{"foo":"bar",'
+                b'"_attachments":{"data.txt":{"content_type":"text/plain",'
+                b'"revpos":4,"digest":"md5-IRgCvi7N+T8xYLHTUBwttg==",'
+                b'"length":24,"follows":true}}}\r\n'
+                b'--abc\r\n'
+                b'Content-Disposition: attachment; filename="data.txt"\r\n'
+                b'Content-Type: text/plain\r\nContent-Length: 24\r\n\r\n'
+                b'Replicate All The Data!\n\r\n'
+                b'--abc--')
+        rv = self.app.put('/%s/%s' % (self.dbname, self.docid),
+                          data=data,
+                          content_type='multipart/related;boundary=abc')
+        assert rv.status_code == 201
+
 
 class DesignDocsTestCase(DocumentAPITestCase):
 

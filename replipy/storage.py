@@ -7,6 +7,7 @@
 # you should have received as part of this distribution.
 #
 
+import base64
 import hashlib
 import pickle
 import time
@@ -75,6 +76,10 @@ class ABCDatabase(object, metaclass=ABCMeta):
     @abstractmethod
     def ensure_full_commit(self):
         """Ensures that all changes are actually stored on disk"""
+
+    @abstractmethod
+    def add_attachment(self, doc, name, data, ctype='application/octet-stream'):
+        """Adds attachment to specified document"""
 
 
 class MemoryDatabase(ABCDatabase):
@@ -172,4 +177,19 @@ class MemoryDatabase(ABCDatabase):
         return {
             'ok': True,
             'instance_start_time': self.info()['instance_start_time']
+        }
+
+    def add_attachment(self, doc, name, data, ctype='application/octet-stream'):
+        atts = doc.setdefault('_attachments')
+        digest = 'md5-%s' % base64.b64encode(hashlib.md5(data).digest()).decode()
+        if doc.get('_rev'):
+            revpos = int(doc['_rev'].split('-')[0]) + 1
+        else:
+            revpos = 1
+        atts[name] = {
+            'data': data,
+            'digest': digest,
+            'length': len(data),
+            'content_type': ctype,
+            'revpos': revpos
         }
