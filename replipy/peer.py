@@ -7,6 +7,7 @@
 # you should have received as part of this distribution.
 #
 
+import functools
 import json
 import flask
 import werkzeug.http
@@ -35,6 +36,16 @@ class ReplicationBlueprint(flask.Blueprint):
 replipy = ReplicationBlueprint('replipy', __name__)
 
 
+def database_should_exists(func):
+    @functools.wraps(func)
+    def check_db(dbname, *args, **kwargs):
+        if dbname not in replipy.dbs:
+            return replipy.make_response(404, {'error': 'not_found',
+                                               'reason': dbname})
+        return func(dbname, *args, **kwargs)
+    return check_db
+
+
 @replipy.route('/<dbname>/', methods=['HEAD', 'GET', 'PUT'])
 def database(dbname):
     def head():
@@ -55,8 +66,8 @@ def database(dbname):
     return locals()[flask.request.method.lower()]()
 
 
-@replipy.route('/<dbname>/<docid>',
-               methods=['HEAD', 'GET', 'PUT', 'DELETE'])
+@replipy.route('/<dbname>/<docid>', methods=['HEAD', 'GET', 'PUT', 'DELETE'])
+@database_should_exists
 def document(dbname, docid):
     def head():
         return get()
@@ -125,9 +136,6 @@ def document(dbname, docid):
             'rev': rev
         })
 
-    if dbname not in replipy.dbs:
-        return replipy.make_response(404, {'error': 'not_found',
-                                           'reason': dbname})
     db = replipy.dbs[dbname]
     return locals()[flask.request.method.lower()]()
 
@@ -145,28 +153,22 @@ def local_document(dbname, docid):
 
 
 @replipy.route('/<dbname>/_revs_diff', methods=['POST'])
+@database_should_exists
 def database_revs_diff(dbname):
-    if dbname not in replipy.dbs:
-        return replipy.make_response(404, {'error': 'not_found',
-                                           'reason': dbname})
     db = replipy.dbs[dbname]
     return replipy.make_response(200, db.revs_diff(flask.request.get_json()))
 
 
 @replipy.route('/<dbname>/_bulk_docs', methods=['POST'])
+@database_should_exists
 def database_bulk_docs(dbname):
-    if dbname not in replipy.dbs:
-        return replipy.make_response(404, {'error': 'not_found',
-                                           'reason': dbname})
     db = replipy.dbs[dbname]
     return replipy.make_response(201, db.bulk_docs(**flask.request.get_json()))
 
 
 @replipy.route('/<dbname>/_ensure_full_commit', methods=['POST'])
+@database_should_exists
 def database_ensure_full_commit(dbname):
-    if dbname not in replipy.dbs:
-        return replipy.make_response(404, {'error': 'not_found',
-                                           'reason': dbname})
     db = replipy.dbs[dbname]
     return replipy.make_response(201, db.ensure_full_commit())
 
