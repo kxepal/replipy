@@ -82,7 +82,7 @@ def document(dbname, docid):
         rev = flask.request.args.get('rev')
         new_edits = json.loads(flask.request.args.get('new_edits', 'true'))
 
-        if flask.request.content_type == 'application/json':
+        if flask.request.content_type.startswith('application/json'):
             doc = flask.request.get_json()
 
         elif flask.request.content_type.startswith('multipart/related'):
