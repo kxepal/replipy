@@ -72,6 +72,10 @@ class ABCDatabase(object, metaclass=ABCMeta):
     def bulk_docs(self, docs, new_edits=True):
         """Bulk update docs"""
 
+    @abstractmethod
+    def ensure_full_commit(self):
+        """Ensures that all changes are actually stored on disk"""
+
 
 class MemoryDatabase(ABCDatabase):
 
@@ -163,3 +167,9 @@ class MemoryDatabase(ABCDatabase):
                             'error': type(err).__name__,
                             'reason': str(err)})
         return res
+
+    def ensure_full_commit(self):
+        return {
+            'ok': True,
+            'instance_start_time': self.info()['instance_start_time']
+        }

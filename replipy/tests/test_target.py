@@ -222,5 +222,17 @@ class BulkDocsTestCase(ReplipyDBTestCase):
             assert res['rev'] == '9-X'
 
 
+class EnsureFullCommitTestCase(ReplipyDBTestCase):
+
+    def test_ensure_full_commit(self):
+        rv = self.app.post('/%s/_ensure_full_commit' % self.dbname,
+                           content_type='application/json')
+        assert rv.status_code == 201
+
+        resp = self.decode(rv)
+        assert resp['ok']
+        assert 'instance_start_time' in resp
+
+
 if __name__ == '__main__':
     unittest.main()

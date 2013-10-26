@@ -125,3 +125,12 @@ def database_bulk_docs(dbname):
                                            'reason': dbname})
     db = replipy.dbs[dbname]
     return replipy.make_response(201, db.bulk_docs(**flask.request.get_json()))
+
+
+@replipy.route('/<dbname>/_ensure_full_commit', methods=['POST'])
+def database_ensure_full_commit(dbname):
+    if dbname not in replipy.dbs:
+        return replipy.make_response(404, {'error': 'not_found',
+                                           'reason': dbname})
+    db = replipy.dbs[dbname]
+    return replipy.make_response(201, db.ensure_full_commit())
