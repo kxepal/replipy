@@ -238,6 +238,12 @@ class BulkDocsTestCase(ReplipyDBTestCase):
             assert res['id'] in ['foo', 'bar']
             assert res['rev'] == '9-X'
 
+    def test_bulk_create_with_gen_id(self):
+        rv = self.app.post('/%s/_bulk_docs' % self.dbname,
+                           data=self.encode({'docs': [{}, {}]}),
+                           content_type='application/json')
+        assert rv.status_code == 201
+
 
 class EnsureFullCommitTestCase(ReplipyDBTestCase):
 

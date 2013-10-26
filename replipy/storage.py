@@ -159,16 +159,15 @@ class MemoryDatabase(ABCDatabase):
     def bulk_docs(self, docs, new_edits=True):
         res = []
         for doc in docs:
-            idx, rev = doc['_id'], doc.get('_rev')
             try:
-                idx, rev = self.store(doc, rev, new_edits)
+                idx, rev = self.store(doc, None, new_edits)
                 res.append({
                     'ok': True,
                     'id': idx,
                     'rev': rev
                 })
             except Exception as err:
-                res.append({'id': idx,
+                res.append({'id': doc.get('_id'),
                             'error': type(err).__name__,
                             'reason': str(err)})
         return res
