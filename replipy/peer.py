@@ -73,10 +73,13 @@ def document(dbname, docid):
         return get()
 
     def get():
-        if docid not in db:
+        try:
+            doc = db.load(docid, flask.request.args.get('rev', None))
+        except db.NotFound as err:
             return replipy.make_response(404, {'error': 'not_found',
                                                'reason': docid})
-        return replipy.make_response(200, db.load(docid))
+        else:
+            return replipy.make_response(200, doc)
 
     def put():
         rev = flask.request.args.get('rev')
@@ -129,12 +132,22 @@ def document(dbname, docid):
             })
 
     def delete():
-        idx, rev = db.remove(docid)
-        return replipy.make_response(201, {
-            'ok': True,
-            'id': idx,
-            'rev': rev
-        })
+        try:
+            idx, rev = db.remove(docid, flask.request.args.get('rev', None))
+        except db.NotFound as err:
+            return replipy.make_response(404, {'error': 'not_found',
+                                               'reason': docid})
+        except db.Conflict as err:
+            return replipy.make_response(409, {
+                'error': 'conflict',
+                'reason': str(err)
+            })
+        else:
+            return replipy.make_response(201, {
+                'ok': True,
+                'id': idx,
+                'rev': rev
+            })
 
     db = replipy.dbs[dbname]
     return locals()[flask.request.method.lower()]()

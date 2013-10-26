@@ -113,7 +113,7 @@ class DocumentAPITestCase(ReplipyDBTestCase):
         rv = self.app.put('/%s/%s' % (self.dbname, self.docid),
                           data=self.encode({'foo': 'bar', '_rev': rev}),
                           content_type='application/json')
-        assert rv.status_code == 201, rv.data
+        assert rv.status_code == 201
 
     def test_multipart_related(self):
         data = (b'--abc\r\n'

@@ -21,13 +21,16 @@ class ABCDatabase(object, metaclass=ABCMeta):
     class Conflict(Exception):
         """Raises in case of conflict updates"""
 
+    class NotFound(Exception):
+        """Raises in case attempt to query on missed document"""
+
     def __init__(self, name):
         self._name = name
         self._start_time = int(time.time() * 10**6)
         self._update_seq = 0
 
     @abstractmethod
-    def __contains__(self, idx):
+    def contains(self, idx, rev=None):
         """Verifies that document with specified idx exists"""
 
     @property
@@ -54,7 +57,7 @@ class ABCDatabase(object, metaclass=ABCMeta):
         }
 
     @abstractmethod
-    def load(self, idx):
+    def load(self, idx, rev=None):
         """Returns document by specified idx"""
 
     @abstractmethod
@@ -93,9 +96,6 @@ class MemoryDatabase(ABCDatabase):
         self._docs = {}
         self._changes = {}
 
-    def __contains__(self, item):
-        return item in self._docs
-
     def _new_rev(self, doc):
         oldrev = doc.get('_rev')
         if oldrev is None:
@@ -107,7 +107,17 @@ class MemoryDatabase(ABCDatabase):
         newrev = '%d-%s' % (seq + 1, sig)
         return newrev.lower()
 
-    def load(self, idx):
+    def contains(self, idx, rev=None):
+        if idx not in self._docs:
+            return False
+        doc = self._docs[idx]
+        if rev is None:
+            return not doc.get('_deleted', False)
+        return self._docs[idx]['_rev'] == rev
+
+    def load(self, idx, rev=None):
+        if not self.contains(idx, rev):
+            raise self.NotFound(idx)
         return self._docs[idx]
 
     def store(self, doc, rev=None, new_edits=True):
@@ -119,9 +129,11 @@ class MemoryDatabase(ABCDatabase):
         idx = doc['_id']
 
         if new_edits:
-            if idx in self and self._docs[idx]['_rev'] != rev:
-                raise self.Conflict('Document update conflict')
-            elif idx not in self and rev is not None:
+            if self.contains(idx):
+                if rev is None or not self.contains(idx, rev):
+                    raise self.Conflict('Document update conflict')
+                doc['_rev'] = rev
+            elif rev is not None:
                 raise self.Conflict('Document update conflict')
             doc['_rev'] = self._new_rev(doc)
         else:
@@ -137,7 +149,9 @@ class MemoryDatabase(ABCDatabase):
         return idx, rev
 
     def remove(self, idx, rev):
-        if self._docs[idx]['_rev'] != rev:
+        if not self.contains(idx):
+            raise self.NotFound(idx)
+        elif not self.contains(idx, rev):
             raise self.Conflict('Document update conflict')
         doc = {
             '_id': idx,
@@ -150,7 +164,7 @@ class MemoryDatabase(ABCDatabase):
         res = defaultdict(dict)
         for idx, revs in idrevs.items():
             missing = []
-            if idx not in self:
+            if not self.contains(idx):
                 missing.extend(revs)
                 res[idx]['missing'] = missing
                 continue
