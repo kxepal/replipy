@@ -126,5 +126,44 @@ class ReplicationLogTestCase(DocumentAPITestCase):
     docid = '_local/abc'
 
 
+class RevsDiffTestCase(ReplipyDBTestCase):
+
+    def setUp(self):
+        super(RevsDiffTestCase, self).setUp()
+        rv = self.app.put('/%s/%s' % (self.dbname, 'doc'),
+                          data=self.encode({'foo': 'bar'}),
+                          content_type='application/json')
+        resp = self.decode(rv)
+        rv = self.app.put('/%s/%s' % (self.dbname, 'doc'),
+                          data=self.encode({'foo': 'bar', '_rev': resp['rev']}),
+                          content_type='application/json')
+        resp = self.decode(rv)
+        self.idrev = resp['id'], resp['rev']
+
+    def test_no_missing(self):
+        idx, rev = self.idrev
+        data = {idx: [rev]}
+
+        rv = self.app.post('/%s/_revs_diff' % self.dbname,
+                           data=self.encode(data),
+                           content_type='application/json')
+        assert rv.status_code == 200
+
+        resp = self.decode(rv)
+        assert resp == {}
+
+    def test_missing_revs(self):
+        idx, rev = self.idrev
+        data = {'foo': ['1-ABC', '2-CDE'], idx: [rev, '1-QWE']}
+
+        rv = self.app.post('/%s/_revs_diff' % self.dbname,
+                           data=self.encode(data),
+                           content_type='application/json')
+        assert rv.status_code == 200
+
+        resp = self.decode(rv)
+        assert resp['foo']['missing'] == ['1-ABC', '2-CDE']
+        assert resp[idx]['missing'] == ['1-QWE']
+
 if __name__ == '__main__':
     unittest.main()

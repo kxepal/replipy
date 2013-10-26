@@ -107,3 +107,12 @@ def design_document(dbname, docid):
                methods=['GET', 'PUT', 'DELETE'])
 def local_document(dbname, docid):
     return document(dbname, '_local/' + docid)
+
+
+@replipy.route('/<dbname>/_revs_diff', methods=['POST'])
+def database_revs_diff(dbname):
+    if dbname not in replipy.dbs:
+        return replipy.make_response(404, {'error': 'not_found',
+                                           'reason': dbname})
+    db = replipy.dbs[dbname]
+    return replipy.make_response(200, db.revs_diff(flask.request.get_json()))

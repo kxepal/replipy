@@ -12,6 +12,7 @@ import json
 import time
 import uuid
 from abc import ABCMeta, abstractmethod
+from collections import defaultdict
 
 
 class ABCDatabase(object, metaclass=ABCMeta):
@@ -63,6 +64,9 @@ class ABCDatabase(object, metaclass=ABCMeta):
     def remove(self, idx, rev):
         """Removes document by specified idx and rev"""
 
+    @abstractmethod
+    def revs_diff(self, idrevs):
+        """Returns missed revisions for specified id - revs mapping"""
 
 class MemoryDatabase(ABCDatabase):
 
@@ -117,3 +121,19 @@ class MemoryDatabase(ABCDatabase):
             '_deleted': True
         }
         return self.store(doc, rev)
+
+    def revs_diff(self, idrevs):
+        res = defaultdict(dict)
+        for idx, revs in idrevs.items():
+            missing = []
+            if idx not in self:
+                missing.extend(revs)
+                res[idx]['missing'] = missing
+                continue
+            doc = self._docs[idx]
+            for rev in revs:
+                if doc['_rev'] != rev:
+                    missing.append(rev)
+            if missing:
+                res[idx]['missing'] = missing
+        return res
