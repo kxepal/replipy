@@ -29,10 +29,6 @@ class ABCDatabase(object, metaclass=ABCMeta):
         self._start_time = int(time.time() * 10**6)
         self._update_seq = 0
 
-    @abstractmethod
-    def contains(self, idx, rev=None):
-        """Verifies that document with specified idx exists"""
-
     @property
     def name(self):
         """Returns database symbolic name as string"""
@@ -55,6 +51,15 @@ class ABCDatabase(object, metaclass=ABCMeta):
             'instance_start_time': str(self.start_time),
             'update_seq': self.update_seq
         }
+
+    @abstractmethod
+    def contains(self, idx, rev=None):
+        """Verifies that document with specified idx exists"""
+
+    @abstractmethod
+    def check_for_conflicts(self, idx, rev):
+        """Check that specified idx and rev provides no conflicts
+        or raises Conflict exception otherwise"""
 
     @abstractmethod
     def load(self, idx, rev=None):
@@ -107,6 +112,17 @@ class MemoryDatabase(ABCDatabase):
         newrev = '%d-%s' % (seq + 1, sig)
         return newrev.lower()
 
+    def check_for_conflicts(self, idx, rev):
+        if self.contains(idx):
+            if rev is None:
+                if idx.startswith('_local/'):
+                    return
+                raise self.Conflict('Document update conflict')
+            elif not self.contains(idx, rev):
+                raise self.Conflict('Document update conflict')
+        elif rev is not None:
+            raise self.Conflict('Document update conflict')
+
     def contains(self, idx, rev=None):
         if idx not in self._docs:
             return False
@@ -129,12 +145,7 @@ class MemoryDatabase(ABCDatabase):
         idx = doc['_id']
 
         if new_edits:
-            if self.contains(idx):
-                if rev is None or not self.contains(idx, rev):
-                    raise self.Conflict('Document update conflict')
-                doc['_rev'] = rev
-            elif rev is not None:
-                raise self.Conflict('Document update conflict')
+            self.check_for_conflicts(idx, rev)
             doc['_rev'] = self._new_rev(doc)
         else:
             assert rev, 'Document revision missed'

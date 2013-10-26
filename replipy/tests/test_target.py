@@ -142,6 +142,25 @@ class ReplicationLogTestCase(DocumentAPITestCase):
 
     docid = '_local/abc'
 
+    def test_conflict(self):
+        rv = self.app.put('/%s/%s' % (self.dbname, self.docid),
+                          data=self.encode({'foo': 'bar'}),
+                          content_type='application/json')
+        assert rv.status_code == 201
+
+        resp = self.decode(rv)
+        rev = resp['rev']
+
+        rv = self.app.put('/%s/%s' % (self.dbname, self.docid),
+                          data=self.encode({'foo': 'bar'}),
+                          content_type='application/json')
+        assert rv.status_code == 201
+
+        rv = self.app.put('/%s/%s' % (self.dbname, self.docid),
+                          data=self.encode({'foo': 'bar', '_rev': rev}),
+                          content_type='application/json')
+        assert rv.status_code == 201
+
 
 class RevsDiffTestCase(ReplipyDBTestCase):
 
