@@ -173,6 +173,32 @@ def database_ensure_full_commit(dbname):
     return replipy.make_response(201, db.ensure_full_commit())
 
 
+@replipy.route('/<dbname>/_changes', methods=['GET'])
+@database_should_exists
+def database_changes(dbname):
+    def generator(changes, last_seq):
+        yield '{"last_seq": %d,' % last_seq
+        yield '"results":['
+        change = next(changes)
+        yield json.dumps(change)
+        for change in changes:
+            yield ',' + json.dumps(change)
+        yield ']}'
+    db = replipy.dbs[dbname]
+    last_seq = db.update_seq
+
+    args = flask.request.args
+    heartbeat = args.get('heartbeat', 10000)
+    since = json.loads(args.get('since', '0'))
+    feed = args.get('feed', 'normal')
+    style = args.get('style', 'all_docs')
+    filter = args.get('filter', None)
+
+    changes = db.changes(since, feed, style, filter)
+    return flask.Response(generator(changes, last_seq),
+                          content_type='application/json')
+
+
 def parse_multipart_data(stream, boundary):
     boundary = boundary.encode()
     next_boundary = boundary and b'--' + boundary or None

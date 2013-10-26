@@ -78,6 +78,10 @@ class ABCDatabase(object, metaclass=ABCMeta):
         """Ensures that all changes are actually stored on disk"""
 
     @abstractmethod
+    def changes(self, since=0, feed='normal', style='all_docs', filter=None):
+        """Ensures that all changes are actually stored on disk"""
+
+    @abstractmethod
     def add_attachment(self, doc, name, data, ctype='application/octet-stream'):
         """Adds attachment to specified document"""
 
@@ -87,6 +91,7 @@ class MemoryDatabase(ABCDatabase):
     def __init__(self, *args, **kwargs):
         super(MemoryDatabase, self).__init__(*args, **kwargs)
         self._docs = {}
+        self._changes = {}
 
     def __contains__(self, item):
         return item in self._docs
@@ -127,6 +132,7 @@ class MemoryDatabase(ABCDatabase):
 
         self._docs[idx] = doc
         self._update_seq += 1
+        self._changes[idx] = self._update_seq
 
         return idx, rev
 
@@ -178,6 +184,16 @@ class MemoryDatabase(ABCDatabase):
             'instance_start_time': self.info()['instance_start_time']
         }
 
+    def changes(self, since=0, feed='normal', style='all_docs', filter=None):
+        changes = sorted(self._changes.items(), key=lambda i: i[1])
+        if since:
+            for idx, seq in changes:
+                if since <= seq:
+                    yield self.make_event(idx, seq)
+                    break
+        for idx, seq in changes:
+            yield self.make_event(idx, seq)
+
     def add_attachment(self, doc, name, data, ctype='application/octet-stream'):
         atts = doc.setdefault('_attachments')
         digest = 'md5-%s' % base64.b64encode(hashlib.md5(data).digest()).decode()
@@ -192,3 +208,14 @@ class MemoryDatabase(ABCDatabase):
             'content_type': ctype,
             'revpos': revpos
         }
+
+    def make_event(self, idx, seq):
+        doc = self._docs[idx]
+        event = {
+            'id': idx,
+            'changes': [{'rev': doc['_rev']}],
+            'seq': seq
+        }
+        if doc.get('_deleted'):
+            event['_deleted'] = True
+        return event
