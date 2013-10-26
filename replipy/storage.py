@@ -8,7 +8,7 @@
 #
 
 import hashlib
-import json
+import pickle
 import time
 import uuid
 from abc import ABCMeta, abstractmethod
@@ -93,8 +93,8 @@ class MemoryDatabase(ABCDatabase):
         else:
             seq, _ = oldrev.split('-', 1)
             seq = int(seq)
-        hash = hashlib.md5(json.dumps(doc).encode('utf-8')).hexdigest()
-        newrev = '%d-%s' % (seq + 1, hash)
+        sig = hashlib.md5(pickle.dumps(doc)).hexdigest()
+        newrev = '%d-%s' % (seq + 1, sig)
         return newrev.lower()
 
     def load(self, idx):
