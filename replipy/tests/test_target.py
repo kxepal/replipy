@@ -165,5 +165,62 @@ class RevsDiffTestCase(ReplipyDBTestCase):
         assert resp['foo']['missing'] == ['1-ABC', '2-CDE']
         assert resp[idx]['missing'] == ['1-QWE']
 
+
+class BulkDocsTestCase(ReplipyDBTestCase):
+
+    def test_bulk_create(self):
+        rv = self.app.post('/%s/_bulk_docs' % self.dbname,
+                           data=self.encode({'docs': [{'_id': 'foo'},
+                                                      {'_id': 'bar'}]}),
+                           content_type='application/json')
+        assert rv.status_code == 201
+
+        resp = self.decode(rv)
+        for res in resp:
+            assert res['ok']
+            assert res['id'] in ['foo', 'bar']
+            assert 'rev' in res
+
+    def test_bulk_update(self):
+        docs = {
+            'foo': {'_id': 'foo'},
+            'bar': {'_id': 'bar'}
+        }
+        rv = self.app.post('/%s/_bulk_docs' % self.dbname,
+                           data=self.encode({'docs': list(docs.values())}),
+                           content_type='application/json')
+        assert rv.status_code == 201
+
+        resp = self.decode(rv)
+        for res in resp:
+            assert res['rev'].startswith('1-')
+            docs[res['id']]['_rev'] = res['rev']
+
+        rv = self.app.post('/%s/_bulk_docs' % self.dbname,
+                           data=self.encode({'docs': list(docs.values())}),
+                           content_type='application/json')
+        assert rv.status_code == 201
+
+        resp = self.decode(rv)
+        for res in resp:
+            assert res['ok']
+            assert res['rev'].startswith('2-')
+
+    def test_bulk_newedits(self):
+        rv = self.app.post(
+            '/%s/_bulk_docs' % self.dbname,
+            data=self.encode({'docs': [{'_id': 'foo', '_rev': '9-X'},
+                                       {'_id': 'bar', '_rev': '9-X'}],
+                              'new_edits': False}),
+            content_type='application/json')
+        assert rv.status_code == 201
+
+        resp = self.decode(rv)
+        for res in resp:
+            assert res['ok']
+            assert res['id'] in ['foo', 'bar']
+            assert res['rev'] == '9-X'
+
+
 if __name__ == '__main__':
     unittest.main()

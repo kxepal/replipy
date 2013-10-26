@@ -116,3 +116,12 @@ def database_revs_diff(dbname):
                                            'reason': dbname})
     db = replipy.dbs[dbname]
     return replipy.make_response(200, db.revs_diff(flask.request.get_json()))
+
+
+@replipy.route('/<dbname>/_bulk_docs', methods=['POST'])
+def database_bulk_docs(dbname):
+    if dbname not in replipy.dbs:
+        return replipy.make_response(404, {'error': 'not_found',
+                                           'reason': dbname})
+    db = replipy.dbs[dbname]
+    return replipy.make_response(201, db.bulk_docs(**flask.request.get_json()))

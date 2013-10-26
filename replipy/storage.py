@@ -68,6 +68,11 @@ class ABCDatabase(object, metaclass=ABCMeta):
     def revs_diff(self, idrevs):
         """Returns missed revisions for specified id - revs mapping"""
 
+    @abstractmethod
+    def bulk_docs(self, docs, new_edits=True):
+        """Bulk update docs"""
+
+
 class MemoryDatabase(ABCDatabase):
 
     def __init__(self, *args, **kwargs):
@@ -91,7 +96,7 @@ class MemoryDatabase(ABCDatabase):
     def load(self, idx):
         return self._docs[idx]
 
-    def store(self, doc, rev=None):
+    def store(self, doc, rev=None, new_edits=True):
         if '_id' not in doc:
             doc['_id'] = str(uuid.uuid4()).lower()
         if rev is None:
@@ -99,12 +104,16 @@ class MemoryDatabase(ABCDatabase):
 
         idx = doc['_id']
 
-        if idx in self and self._docs[idx]['_rev'] != rev:
-            raise self.Conflict('Document update conflict')
-        elif idx not in self and rev is not None:
-            raise self.Conflict('Document update conflict')
+        if new_edits:
+            if idx in self and self._docs[idx]['_rev'] != rev:
+                raise self.Conflict('Document update conflict')
+            elif idx not in self and rev is not None:
+                raise self.Conflict('Document update conflict')
+            doc['_rev'] = self._new_rev(doc)
+        else:
+            assert rev, 'Document revision missed'
+            doc['_rev'] = rev
 
-        doc['_rev'] = self._new_rev(doc)
         idx, rev = doc['_id'], doc['_rev']
 
         self._docs[idx] = doc
@@ -136,4 +145,21 @@ class MemoryDatabase(ABCDatabase):
                     missing.append(rev)
             if missing:
                 res[idx]['missing'] = missing
+        return res
+
+    def bulk_docs(self, docs, new_edits=True):
+        res = []
+        for doc in docs:
+            idx, rev = doc['_id'], doc.get('_rev')
+            try:
+                idx, rev = self.store(doc, rev, new_edits)
+                res.append({
+                    'ok': True,
+                    'id': idx,
+                    'rev': rev
+                })
+            except Exception as err:
+                res.append({'id': idx,
+                            'error': type(err).__name__,
+                            'reason': str(err)})
         return res
