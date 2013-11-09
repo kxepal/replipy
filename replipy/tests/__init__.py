@@ -10,18 +10,16 @@
 import json
 import unittest
 from replipy import app
-from replipy.storage import MemoryDatabase
 
 
 class ReplipyTestCase(unittest.TestCase):
 
     def setUp(self):
         app.config['TESTING'] = True
-        app.blueprints['replipy'].db_cls = MemoryDatabase
         self.app = app.test_client()
 
     def tearDown(self):
-        app.blueprints['replipy'].dbs.clear()
+        app.dbs.clear()
 
     def decode(self, rv):
         assert rv.content_type == 'application/json'

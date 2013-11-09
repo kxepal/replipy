@@ -10,40 +10,65 @@
 import functools
 import json
 import flask
+import werkzeug.exceptions
 import werkzeug.http
+from flask import current_app as app
 from .storage import ABCDatabase
 
 
-class ReplicationBlueprint(flask.Blueprint):
-
-    db_cls = ABCDatabase
-
-    def __init__(self, *args, **kwargs):
-        super(ReplicationBlueprint, self).__init__(*args, **kwargs)
-        self._dbs = {}
-
-    @property
-    def dbs(self):
-        return self._dbs
-
-    def make_response(self, code, data):
-        resp = flask.make_response(json.dumps(data))
-        resp.status_code = code
-        resp.headers['Content-Type'] = 'application/json'
-        return resp
+replipy = flask.Blueprint('replipy', __name__)
 
 
-replipy = ReplicationBlueprint('replipy', __name__)
+def make_response(code, data):
+    resp = flask.make_response(json.dumps(data))
+    resp.status_code = code
+    resp.headers['Content-Type'] = 'application/json'
+    return resp
+
+
+def make_error_response(code, error, reason):
+    if isinstance(reason, werkzeug.exceptions.HTTPException):
+        reason = reason.description
+    else:
+        reason = str(reason)
+    return make_response(code, {'error': error, 'reason': reason})
 
 
 def database_should_exists(func):
     @functools.wraps(func)
     def check_db(dbname, *args, **kwargs):
-        if dbname not in replipy.dbs:
-            return replipy.make_response(404, {'error': 'not_found',
-                                               'reason': dbname})
+        if dbname not in app.dbs:
+            return flask.abort(404, '%s missed' % dbname)
         return func(dbname, *args, **kwargs)
     return check_db
+
+
+@replipy.record_once
+def setup(state):
+    state.app.db_cls = state.options.get('db_cls', ABCDatabase)
+    state.app.dbs = {}
+
+
+@replipy.errorhandler(400)
+def bad_request(err):
+    return make_error_response(400, 'bad_request', err)
+
+
+@replipy.errorhandler(404)
+@replipy.errorhandler(ABCDatabase.NotFound)
+def not_found(err):
+    return make_error_response(404, 'not_found', err)
+
+
+@replipy.errorhandler(409)
+@replipy.errorhandler(ABCDatabase.Conflict)
+def conflict(err):
+    return make_error_response(409, 'conflict', err)
+
+
+@replipy.errorhandler(412)
+def db_exists(err):
+    return make_error_response(412, 'db_exists', err)
 
 
 @replipy.route('/<dbname>/', methods=['HEAD', 'GET', 'PUT'])
@@ -52,16 +77,15 @@ def database(dbname):
         return get()
 
     def get():
-        if dbname not in replipy.dbs:
-            return replipy.make_response(404, {'error': 'not_found',
-                                               'reason': dbname})
-        return replipy.make_response(200, replipy.dbs[dbname].info())
+        if dbname not in app.dbs:
+            return flask.abort(404, '%s missed' % dbname)
+        return make_response(200, app.dbs[dbname].info())
 
     def put():
-        if dbname not in replipy.dbs:
-            replipy.dbs[dbname] = replipy.db_cls(dbname)
-            return replipy.make_response(201, {'ok': True})
-        return replipy.make_response(412, {'error': 'db_exists'})
+        if dbname in app.dbs:
+            return flask.abort(412, dbname)
+        app.dbs[dbname] = app.db_cls(dbname)
+        return make_response(201, {'ok': True})
 
     return locals()[flask.request.method.lower()]()
 
@@ -73,22 +97,17 @@ def document(dbname, docid):
         return get()
 
     def get():
-        try:
-            doc = db.load(docid, flask.request.args.get('rev', None))
-        except db.NotFound as err:
-            return replipy.make_response(404, {'error': 'not_found',
-                                               'reason': docid})
-        else:
-            return replipy.make_response(200, doc)
+        doc = db.load(docid, flask.request.args.get('rev', None))
+        return make_response(200, doc)
 
     def put():
         rev = flask.request.args.get('rev')
         new_edits = json.loads(flask.request.args.get('new_edits', 'true'))
 
-        if flask.request.content_type.startswith('application/json'):
+        if flask.request.mimetype == 'application/json':
             doc = flask.request.get_json()
 
-        elif flask.request.content_type.startswith('multipart/related'):
+        elif flask.request.mimetype == 'multipart/related':
             parts = parse_multipart_data(
                 flask.request.stream, flask.request.mimetype_params['boundary'])
 
@@ -110,46 +129,18 @@ def document(dbname, docid):
 
         else:
             # mimics to CouchDB response in case of unsupported mime-type
-            return replipy.make_response(400, {
-                'error': 'bad_request',
-                'reason': 'invalid_json'
-            })
+            return flask.abort(400)
 
         doc['_id'] = docid
 
-        try:
-            idx, rev = db.store(doc, rev, new_edits)
-        except replipy.db_cls.Conflict as err:
-            return replipy.make_response(409, {
-                'error': 'conflict',
-                'reason': str(err)
-            })
-        else:
-            return replipy.make_response(201, {
-                'ok': True,
-                'id': idx,
-                'rev': rev
-            })
+        idx, rev = db.store(doc, rev, new_edits)
+        return make_response(201, {'ok': True, 'id': idx, 'rev': rev})
 
     def delete():
-        try:
-            idx, rev = db.remove(docid, flask.request.args.get('rev', None))
-        except db.NotFound as err:
-            return replipy.make_response(404, {'error': 'not_found',
-                                               'reason': docid})
-        except db.Conflict as err:
-            return replipy.make_response(409, {
-                'error': 'conflict',
-                'reason': str(err)
-            })
-        else:
-            return replipy.make_response(201, {
-                'ok': True,
-                'id': idx,
-                'rev': rev
-            })
+        idx, rev = db.remove(docid, flask.request.args.get('rev', None))
+        return make_response(201, {'ok': True, 'id': idx, 'rev': rev})
 
-    db = replipy.dbs[dbname]
+    db = app.dbs[dbname]
     return locals()[flask.request.method.lower()]()
 
 
@@ -168,22 +159,22 @@ def local_document(dbname, docid):
 @replipy.route('/<dbname>/_revs_diff', methods=['POST'])
 @database_should_exists
 def database_revs_diff(dbname):
-    db = replipy.dbs[dbname]
-    return replipy.make_response(200, db.revs_diff(flask.request.get_json()))
+    db = app.dbs[dbname]
+    return make_response(200, db.revs_diff(flask.request.get_json()))
 
 
 @replipy.route('/<dbname>/_bulk_docs', methods=['POST'])
 @database_should_exists
 def database_bulk_docs(dbname):
-    db = replipy.dbs[dbname]
-    return replipy.make_response(201, db.bulk_docs(**flask.request.get_json()))
+    db = app.dbs[dbname]
+    return make_response(201, db.bulk_docs(**flask.request.get_json()))
 
 
 @replipy.route('/<dbname>/_ensure_full_commit', methods=['POST'])
 @database_should_exists
 def database_ensure_full_commit(dbname):
-    db = replipy.dbs[dbname]
-    return replipy.make_response(201, db.ensure_full_commit())
+    db = app.dbs[dbname]
+    return make_response(201, db.ensure_full_commit())
 
 
 @replipy.route('/<dbname>/_changes', methods=['GET'])
@@ -197,7 +188,7 @@ def database_changes(dbname):
         for change in changes:
             yield ',' + json.dumps(change)
         yield ']}'
-    db = replipy.dbs[dbname]
+    db = app.dbs[dbname]
     last_seq = db.update_seq
 
     args = flask.request.args

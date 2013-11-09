@@ -9,11 +9,10 @@
 
 from flask import Flask
 from replipy.peer import replipy
+from replipy.storage import MemoryDatabase
 
 app = Flask(__name__)
-app.register_blueprint(replipy)
+app.register_blueprint(replipy, db_cls=MemoryDatabase)
 
 if __name__ == '__main__':
-    from replipy.storage import MemoryDatabase
-    replipy.db_cls = MemoryDatabase
     app.run(debug=True)
