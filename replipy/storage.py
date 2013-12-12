@@ -16,7 +16,8 @@ from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 
 
-class ABCDatabase(object, metaclass=ABCMeta):
+class ABCDatabase(object):
+    __metaclass__ = ABCMeta
 
     class Conflict(Exception):
         """Raises in case of conflict updates"""
