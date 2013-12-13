@@ -15,9 +15,9 @@ import uuid
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 
+_MetaDatabase = ABCMeta('_MetaDatabase', (object,), {})
 
-class ABCDatabase(object):
-    __metaclass__ = ABCMeta
+class ABCDatabase(_MetaDatabase):
 
     class Conflict(Exception):
         """Raises in case of conflict updates"""
