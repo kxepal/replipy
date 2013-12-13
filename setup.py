@@ -12,7 +12,6 @@ from distutils.core import setup
 setup(
     name='replipy',
     version='0.0',
-    packages=['replipy'],
     url='https://github.com/kxepal/replipy',
     license='MIT',
     author='Alexander Shorin',
